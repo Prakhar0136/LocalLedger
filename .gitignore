@@ -5,3 +5,4 @@ data/inbox/*
 data/processed/*
 !data/inbox/.gitkeep
 !data/processed/.gitkeep
+data/chroma_db/

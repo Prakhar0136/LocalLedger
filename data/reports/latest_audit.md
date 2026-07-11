@@ -1,7 +1,11 @@
 # Local Ledger Audit Report
 
-**Audit Status:** MANUALLY RESOLVED - Note: I lost the receipt, force pass
-**Calculated Total:** $0.0
-**Statement Expected:** $57.5
+**Audit Status:** PASSED
+**Calculated Total:** $12.45
+**Statement Expected:** $12.45
+
+## ⚠️ Budget Policy Violations
+- **Starbucks**: The 'Food & Dining' expense of $12.45 exceeds the $10 limit.
 
 ## Processed Receipts
+- 2025-05-28 | **Starbucks** (Food & Dining): $12.45

@@ -1,15 +1,18 @@
 import sqlite3
 import pandas as pd
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.sqlite import SqliteSaver
 
 from state import AuditState
 from file_handler import FileSystemManager
 from extractors import ExtractionAgents
 from tools import calculate_total_spending, verify_statement_balance
+from memory import CategoryMemory
+from policy import PolicyEngine  # <-- NEW IMPORT
 
 file_manager = FileSystemManager()
 extractors = ExtractionAgents()
+category_db = CategoryMemory()
+policy_engine = PolicyEngine()   # <-- NEW INITIALIZATION
 
 def ingest_files_node(state: AuditState) -> dict:
     print("\n[Node: Ingesting Files]")
@@ -25,11 +28,37 @@ def process_receipts_node(state: AuditState) -> dict:
             parsed_receipts.append(extractors.process_receipt_image(img_path))
         except Exception as e:
             return {"errors": [f"Extraction failed on {img_path.name}: {str(e)}"]}
-            
     return {"receipts": parsed_receipts}
+
+def categorize_node(state: AuditState) -> dict:
+    print("\n[Node: Categorizing Receipts]")
+    receipts = state.get("receipts", [])
     
+    for r in receipts:
+        cat = category_db.predict_category(r.vendor_name)
+        r.category = cat
+        print(f"  -> '{r.vendor_name}' classified as: {cat}")
+        
+    return {"receipts": receipts}
+
+# --- NEW POLICY CHECK NODE ---
+def policy_check_node(state: AuditState) -> dict:
+    print("\n[Node: Checking Budget Policies via RAG]")
+    receipts = state.get("receipts", [])
+    alerts = []
+    
+    for r in receipts:
+        eval_result = policy_engine.evaluate_transaction(r.vendor_name, r.category, r.total_amount)
+        if "PASS" not in eval_result.upper():
+            alerts.append(f"**{r.vendor_name}**: {eval_result}")
+            print(f"  -> ⚠️ Flagged: {r.vendor_name} (${r.total_amount})")
+        else:
+            print(f"  -> {r.vendor_name} passed budget policies.")
+            
+    return {"policy_alerts": alerts}
+
 def math_audit_node(state: AuditState) -> dict:
-    print("[Node: Auditing Math against Statement]")
+    print("\n[Node: Auditing Math against Statement]")
     
     receipts = state.get("receipts", [])
     amounts = [r.total_amount for r in receipts] if receipts else [0.0]
@@ -61,16 +90,13 @@ def reconcile_node(state: AuditState) -> dict:
     return {"retry_count": state.get("retry_count", 0) + 1}
 
 def ask_human_node(state: AuditState) -> dict:
-    """This node only runs after the human provides input."""
     print(f"\n[Node: Applying Human Override]")
     print(f"  -> Human Note: {state.get('human_notes')}")
-    # Force the audit to pass so the report can generate cleanly
     return {"audit_match": True}
 
 def write_report_node(state: AuditState) -> dict:
     print("\n[Node: Writing Report]")
     
-    # Check if a human intervened
     if state.get("human_notes"):
         match_text = f"MANUALLY RESOLVED - Note: {state.get('human_notes')}"
     else:
@@ -81,9 +107,17 @@ def write_report_node(state: AuditState) -> dict:
     report_content += f"**Calculated Total:** ${state.get('calculated_total', 0)}\n"
     report_content += f"**Statement Expected:** ${state.get('statement_total', 0)}\n\n"
     
+    # NEW: Add Policy Alerts Section
+    alerts = state.get("policy_alerts", [])
+    if alerts:
+        report_content += "## ⚠️ Budget Policy Violations\n"
+        for alert in alerts:
+            report_content += f"- {alert}\n"
+        report_content += "\n"
+    
     report_content += "## Processed Receipts\n"
     for r in state.get("receipts", []):
-        report_content += f"- {r.receipt_date} | **{r.vendor_name}**: ${r.total_amount}\n"
+        report_content += f"- {r.receipt_date} | **{r.vendor_name}** ({r.category}): ${r.total_amount}\n"
         
     report_path = file_manager.reports_dir / "latest_audit.md"
     with open(report_path, "w", encoding="utf-8") as f:
@@ -97,7 +131,6 @@ def route_after_audit(state: AuditState) -> str:
         return "report"
     if state.get("retry_count", 0) < 2:
         return "reconcile"
-    # NEW: Instead of forcing a report, route to the human
     return "ask_human"
 
 def build_graph():
@@ -105,6 +138,8 @@ def build_graph():
     
     builder.add_node("ingest", ingest_files_node)
     builder.add_node("process", process_receipts_node)
+    builder.add_node("categorize", categorize_node)
+    builder.add_node("policy_check", policy_check_node) # <-- NEW
     builder.add_node("audit", math_audit_node)
     builder.add_node("reconcile", reconcile_node)
     builder.add_node("ask_human", ask_human_node)
@@ -112,7 +147,9 @@ def build_graph():
     
     builder.add_edge(START, "ingest")
     builder.add_edge("ingest", "process")
-    builder.add_edge("process", "audit")
+    builder.add_edge("process", "categorize")
+    builder.add_edge("categorize", "policy_check")      # <-- ROUTED HERE
+    builder.add_edge("policy_check", "audit")           # <-- ROUTED TO AUDIT
     
     builder.add_conditional_edges(
         "audit", 

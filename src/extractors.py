@@ -27,7 +27,7 @@ class ExtractionAgents:
         mime_type = 'image/png' if str(image_path).lower().endswith('.png') else 'image/jpeg'
             
         response = self.client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.5-flash',
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                 prompt

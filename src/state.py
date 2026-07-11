@@ -17,4 +17,5 @@ class AuditState(TypedDict):
     
     errors: Annotated[List[str], operator.add]
     retry_count: int
-    human_notes: Optional[str]  
+    human_notes: Optional[str]
+    policy_alerts: List[str] 
