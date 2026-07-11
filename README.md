@@ -1,88 +1,142 @@
+```mermaid
 flowchart TB
-    %% Styling Definitions
-    classDef user fill:#e1bee7,stroke:#4a148c,stroke-width:2px,color:#000
-    classDef storage fill:#bbdefb,stroke:#0d47a1,stroke-width:2px,color:#000
-    classDef core fill:#c8e6c9,stroke:#1b5e20,stroke-width:2px,color:#000
-    classDef agents fill:#ffe0b2,stroke:#e65100,stroke-width:2px,color:#000
-    classDef external fill:#cfd8dc,stroke:#263238,stroke-width:2px,color:#000
 
-    %% UI Node
-    CLI([PowerShell CLI / Human-in-the-Loop]):::user
+%% ===== Nodes =====
+CLI([PowerShell CLI<br/>Human-in-the-Loop])
 
-    %% Storage Layer
-    subgraph StorageLayer [Local Storage Layer]
-        FS[(Local File System\nInbox / Reports)]:::storage
-        SQL[(SQLite Checkpoint\nState Saver)]:::storage
-        Chroma[(ChromaDB\nVector Memory)]:::storage
-        MD[budget_goals.md\nPolicy Document]:::storage
-    end
+subgraph Storage["Local Storage Layer"]
+    FS[(Local File System<br/>Inbox / Reports)]
+    SQL[(SQLite Checkpoint<br/>State Saver)]
+    Chroma[(ChromaDB<br/>Vector Memory)]
+    MD["budget_goals.md<br/>Policy Document"]
+end
 
-    %% Core Application Layer
-    subgraph CoreLayer [Orchestration Layer]
-        LG{LangGraph State Machine}:::core
-        State[AuditState TypedDict]:::core
-        Tools[Pandas Math Guardrails]:::core
-    end
+subgraph Core["Orchestration Layer"]
+    LG{{LangGraph<br/>State Machine}}
+    State["AuditState<br/>TypedDict"]
+    Tools["Pandas<br/>Math Guardrails"]
+end
 
-    %% Agent Layer
-    subgraph AgentLayer [Intelligence Layer]
-        Vision[Gemini Extraction Agent]:::agents
-        MemEngine[Memory Pattern Engine]:::agents
-        RAG[LlamaIndex Policy Engine]:::agents
-    end
+subgraph Agents["Intelligence Layer"]
+    Vision["Gemini Extraction Agent"]
+    Memory["Memory Pattern Engine"]
+    RAG["LlamaIndex Policy Engine"]
+end
 
-    %% External APIs
-    subgraph APILayer [External Cloud Services]
-        GeminiCloud((Google Gemini API)):::external
-    end
+subgraph Cloud["External Cloud Services"]
+    Gemini(("Google Gemini API"))
+end
 
-    %% Connections
-    CLI <-->|Interrupts & Prompts| LG
-    FS -->|Raw CSVs & Images| LG
-    LG -->|Markdown Output| FS
-    
-    LG <-->|Saves/Loads Thread| SQL
-    LG <-->|Updates/Reads| State
-    LG <-->|Invokes| Tools
-    
-    LG <-->|Passes Images| Vision
-    LG <-->|Categorizes Vendors| MemEngine
-    LG <-->|Audits Rules| RAG
-    
-    MemEngine <-->|Read/Write Vectors| Chroma
-    RAG <-->|Reads Context| MD
-    
-    Vision <-->|Vision LLM Call| GeminiCloud
-    RAG <-->|Embeddings/LLM Call| GeminiCloud
+%% ===== Connections =====
+CLI --> LG
+LG --> CLI
+
+FS --> LG
+LG --> FS
+
+LG --> SQL
+SQL --> LG
+
+LG --> State
+State --> LG
+
+LG --> Tools
+
+LG --> Vision
+Vision --> LG
+
+LG --> Memory
+Memory --> LG
+
+LG --> RAG
+RAG --> LG
+
+Memory --> Chroma
+Chroma --> Memory
+
+RAG --> MD
+
+Vision --> Gemini
+RAG --> Gemini
+
+%% ===== Colors =====
+style CLI fill:#e1bee7,stroke:#4a148c,stroke-width:2px
+
+style FS fill:#bbdefb
+style SQL fill:#bbdefb
+style Chroma fill:#bbdefb
+style MD fill:#bbdefb
+
+style LG fill:#c8e6c9
+style State fill:#c8e6c9
+style Tools fill:#c8e6c9
+
+style Vision fill:#ffe0b2
+style Memory fill:#ffe0b2
+style RAG fill:#ffe0b2
+
+style Gemini fill:#cfd8dc
+```
 
 
 
-
+```mermaid
 flowchart TD
-    %% Styling Definitions
-    classDef startend fill:#000,stroke:#fff,stroke-width:2px,color:#fff
-    classDef process fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    classDef check fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef alert fill:#ffebee,stroke:#c62828,stroke-width:2px
-    classDef logic fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
 
-    Start((START)):::startend --> Ingest[Node 1: Ingest Files]:::process
-    
-    Ingest -->|Raw Data| Extract[Node 2: Process Receipts]:::process
-    Extract -->|JSON Receipts| Categorize[Node 3: Categorize]:::process
-    Categorize -->|Categorized Receipts| Policy[Node 4: Policy Check]:::process
-    Policy -->|Policy Alerts| Audit[Node 5: Math Audit]:::check
-    
-    Audit -->|Calculated Totals| Router{Condition: Match?}:::logic
-    
-    %% Routing Logic
-    Router -->|True| Report[Node 8: Write Report]:::process
-    Router -->|False & Retries < 2| Reconcile[Node 6: Reconcile Loop]:::alert
-    Router -->|False & Retries >= 2| Breakpoint[Interrupt: Ask Human]:::alert
-    
-    %% Fallback Loops
-    Reconcile -->|Increment Retry Count| Extract
-    Breakpoint -.->|Terminal Prompt| Human[Node 7: Human Override]:::process
-    Human -->|Insert Notes| Report
-    
-    Report -->|latest_audit.md| Finish((END)):::startend
+Start((START))
+
+Ingest["1. Ingest Files"]
+
+Extract["2. Extract Data<br/>CSV / PDF / Image"]
+
+Categorize["3. Categorize Expenses"]
+
+Policy["4. Budget Policy Check"]
+
+Audit["5. Mathematical Audit"]
+
+Decision{Totals Match?}
+
+Retry["6. Reconciliation Loop"]
+
+Human["7. Human Review"]
+
+Report["8. Generate Markdown Report"]
+
+End((END))
+
+Start --> Ingest
+Ingest --> Extract
+Extract --> Categorize
+Categorize --> Policy
+Policy --> Audit
+Audit --> Decision
+
+Decision -- Yes --> Report
+
+Decision -- No --> Retry
+
+Retry --> Extract
+
+Decision -- Retry Limit --> Human
+
+Human --> Report
+
+Report --> End
+
+style Start fill:#000,color:#fff
+style End fill:#000,color:#fff
+
+style Ingest fill:#fff3e0
+style Extract fill:#fff3e0
+style Categorize fill:#fff3e0
+style Policy fill:#fff3e0
+style Report fill:#fff3e0
+
+style Audit fill:#e3f2fd
+
+style Decision fill:#f3e5f5
+
+style Retry fill:#ffebee
+style Human fill:#ffebee
+```
